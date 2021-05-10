@@ -1,0 +1,112 @@
+---
+title: "test"
+author: "Taylor Lockmann & Amber McEldowney"
+date: "5/9/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+
+options(scipen=999) # not scientific notation
+gc() # clear RAM
+
+library(tidyverse)
+library(stringr)
+library(stargazer)
+library(cowplot)
+library(here)
+library(patchwork)
+```
+
+```{r}
+# Read in the data
+
+demand_data <- read.csv(here("data", "HW3_data.csv"), stringsAsFactors = F)
+
+# Exploratory plots
+plot_1 <- ggplot(data=demand_data, aes(x=Q_Low_Gallons,y=Price_Dollars))+
+  geom_point()+
+  theme_cowplot(16)
+
+plot_2 <- ggplot(data=demand_data, aes(x=Q_High_Gallons,y=Price_Dollars))+
+  geom_point()+
+  theme_cowplot(16)
+
+plot_1 + plot_2
+```
+
+```{r}
+# Estimate linear models
+
+## Low income group linear models:
+
+low_demand_model <- lm(Price_Dollars ~ Q_Low_Gallons, data = demand_data)
+# low_demand_model$coefficients # Call the coefficients
+
+al <- low_demand_model$coefficients[[1]] # "al" is the "a" coeff. for low demand
+bl <- low_demand_model$coefficients[[2]] # "bl" is the "b" coeff. for low demand
+
+## High income group linear models:
+
+high_demand_model <- lm(Price_Dollars ~ Q_High_Gallons, data = demand_data)
+# high_demand_model$coefficients # Call the coefficients
+
+ah <- high_demand_model$coefficients[[1]] # "ah" is the "a" coeff. for high demand
+bh <- high_demand_model$coefficients[[2]] # "bh" is the "b" coeff. for high demand
+```
+
+```{r}
+# Add our estimated curves to our plots
+
+price_low_fitted <- al + bl*demand_data$Q_Low_Gallons
+price_high_fitted <- ah + bh*demand_data$Q_High_Gallons
+
+(plot_1+
+  geom_line(aes(y=price_low_fitted, x=Q_Low_Gallons))) +
+(plot_2+
+   geom_line(aes(y = price_high_fitted, x = Q_High_Gallons)))
+```
+
+```{r}
+# Now create functions for our lines, and add them to the same plot
+
+# P(Q)
+inverse_demand <- function(q, model){
+  p <- model$coefficients[[1]] + model$coefficients[[2]]*q
+return(p)
+}
+
+## Inverse P(Q) to get Q(P)
+demand <- function(p, model){
+  q <- (p - model$coefficients[[1]])/model$coefficients[[2]]
+  return(q)
+}
+
+low_demand_curve <- function(x) low_demand_model$coefficients[[1]] + low_demand_model$coefficients[[2]]*x
+high_demand_curve <- function(x) high_demand_model$coefficients[[1]] + high_demand_model$coefficients[[2]]*x
+
+ggplot(data = demand_data, aes(y = Price_Dollars, x = Q_High_Gallons))+
+  stat_function(fun = low_demand_curve,
+                color = "red")+
+  stat_function(fun = high_demand_curve,
+                color = "green")+
+  annotate("text", x = 400000, y = 17, color = "red", label = "Low Income Group")+
+  annotate("text", x = 400000, y = 19, color = "green", label = "High Income Group")+
+  theme_bw()+
+  labs(
+    y = "Price (USD)",
+    x = "Quantity (gallons)",
+    title = "Demand Curves for Gasoline"
+  )+
+  geom_hline(aes(yintercept = 0))+
+  geom_vline(aes(xintercept = 0))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ylim(0, 20)+
+  xlim(0, 600000)
+```
+
