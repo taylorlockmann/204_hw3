@@ -4,7 +4,6 @@ author: "Taylor Lockmann & Amber McEldowney"
 date: "5/9/2021"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -23,6 +22,17 @@ library(here)
 library(patchwork)
 ```
 
+## 1. Marginal externality cost (MEC) per gallon
+
+```{r}
+mec_gallon <- 51*(1/2000)*19.6
+returnValue(mec_gallon)
+```
+Marginal externality cost is approximately $0.50 per gallon of gas. 
+
+
+## 2. Aggregate demand curve, supply curve, consumer benefit, producer benefit, and environmental cost under status quo.
+
 ```{r}
 # Read in the data
 
@@ -37,7 +47,7 @@ plot_2 <- ggplot(data=demand_data, aes(x=Q_High_Gallons,y=Price_Dollars))+
   geom_point()+
   theme_cowplot(16)
 
-plot_1 + plot_2
+#plot_1 + plot_2
 ```
 
 ```{r}
@@ -61,19 +71,19 @@ bh <- high_demand_model$coefficients[[2]] # "bh" is the "b" coeff. for high dema
 ```
 
 ```{r}
-# Add our estimated curves to our plots
+# Add our estimated curves to our exploratory plots
 
 price_low_fitted <- al + bl*demand_data$Q_Low_Gallons
 price_high_fitted <- ah + bh*demand_data$Q_High_Gallons
 
-(plot_1+
-  geom_line(aes(y=price_low_fitted, x=Q_Low_Gallons))) +
-(plot_2+
-   geom_line(aes(y = price_high_fitted, x = Q_High_Gallons)))
+#(plot_1+
+#  geom_line(aes(y=price_low_fitted, x=Q_Low_Gallons))) +
+#(plot_2+
+#   geom_line(aes(y = price_high_fitted, x = Q_High_Gallons)))
 ```
 
 ```{r}
-# Now create functions for our lines, and add them to the same plot
+# Create models to help us find aggregate demand curve
 
 # P(Q)
 inverse_demand <- function(q, model){
@@ -87,16 +97,57 @@ demand <- function(p, model){
   return(q)
 }
 
+# Make aggregate demand model
+agg_demand_model <- lm(Price_Dollars ~ Q_High_Gallons+Q_Low_Gallons, data = demand_data)
+# agg_demand_model$coefficients # Call the coefficients
+
+at <- agg_demand_model$coefficients[[1]] # "at" is the "a" coeff. for total demand
+bt <- agg_demand_model$coefficients[[2]] # "bt" is the "b" coeff. for total demand
+
+# Find q given price p ($3)
+Q_star <- demand(3, agg_demand_model)
+
+# Make supply model
+supply <- function(p, agg_demand_model){
+  q <- (p - agg_demand_model$coefficients[[1]])/agg_demand_model$coefficients[[2]]
+ return(q)
+}
+```
+
+
+```{r}
+# Now create functions for our lines
+
 low_demand_curve <- function(x) low_demand_model$coefficients[[1]] + low_demand_model$coefficients[[2]]*x
 high_demand_curve <- function(x) high_demand_model$coefficients[[1]] + high_demand_model$coefficients[[2]]*x
+agg_demand_curve <- function(x) agg_demand_model$coefficients[[1]] + agg_demand_model$coefficients[[2]]*x
 
+# Find slope of supply curve (we know y-intercept is 0, and current price is $3)
+bs <- 3/supply(3, agg_demand_model) ## rise over run
+supply_curve <- function(x) bs*x
+
+# Make a MSC curve from supply curve + MEC curve (MEC found in part 1)
+msc_curve <- function(x) bs*x + 0.4998
+
+
+# Make the plot
 ggplot(data = demand_data, aes(y = Price_Dollars, x = Q_High_Gallons))+
   stat_function(fun = low_demand_curve,
                 color = "red")+
   stat_function(fun = high_demand_curve,
                 color = "green")+
+  stat_function(fun = supply_curve,
+                color = "blue")+
+  stat_function(fun = msc_curve,
+                color = "pink")+
   annotate("text", x = 400000, y = 14, color = "red", label = "Low Income Group")+
   annotate("text", x = 400000, y = 16, color = "green", label = "High Income Group")+
+  annotate("text", x = 400000, y = 12, color = "orange", label = "Aggregate Demand")+
+  annotate("text", x = 770000, y = 3, color = "blue", label = "Supply Curve")+
+  annotate("text", x = 700000, y = 5, color = "pink", label = "MSC")+
+  annotate("text", x = 800000, y = 1, color = "purple", label = "MEC")+
+  annotate("text", x = -5, y = 3, color = "black", label = "P*")+
+  annotate("text", x = Q_star, y = -1, color = "black", label = "Q*")+
   theme_bw()+
   labs(
     y = "Price (USD)",
@@ -106,7 +157,71 @@ ggplot(data = demand_data, aes(y = Price_Dollars, x = Q_High_Gallons))+
   geom_hline(aes(yintercept = 0))+
   geom_vline(aes(xintercept = 0))+
   theme(plot.title = element_text(hjust = 0.5))+
-  ylim(0, 20)+
-  xlim(0, 600000)
+  ylim(-1, 20)+
+  xlim(-5, 800000)+
+  geom_segment(x = 0, y = 15.803, xend = 150807, yend = 11.685, color = "orange")+ # Use above models to find the y-intercepts of the two demand curves. This will be the y and yend of our pre-kink line segment. 
+  geom_segment(x = 150807, y = 11.685, xend = 801395.3, yend = 0, color = "orange")+ # Use models above to find the x-intercept of the aggregate demand curve. 
+    geom_segment(linetype = "dashed", col = "black", x = 0, y = 3, xend = Q_star, yend = 3)+
+  geom_segment(linetype = "dashed", col = "black", x = Q_star, y = 0, xend = Q_star, yend = 3)+
+  geom_hline(aes(yintercept = 0.4998), color = "purple")
 ```
+
+
+
+The benefit to consumers under the status quo will be equal to the consumer surplus. We can approximate this as follows: 
+
+```{r}
+CS_p <- function(p, model){
+  q <- demand(p, model)
+  cs <- 0.5*(model$coefficients[[1]] - p)*q
+  return(cs)
+}
+
+CS_p(3, agg_demand_model)
+```
+
+Therefore we see that the consumer surplus is approximately $3,741,094. 
+**Note:** It is worth noting that this is not an exact value, as this is the area under the aggregate demand curve from 0 to Q*. In the above graph we can see that the aggregate demand curve is actually kinked, and is therefore not a perfect triangle, so our obtained value is actually a slight overestimation.
+
+
+The benefit to producers will be equal to producer surplus. This is as follows:
+
+```{r}
+PS_p <- function(p, model){
+  q <- supply(p, model)
+  ps <- 0.5*p*q
+  return(ps)
+}
+
+PS_p(3, agg_demand_model)
+```
+
+The producer surplus is approximately $957,188.60. We can see that this is much less than the consumer surplus.
+
+
+The environmental cost under the status quo is as follows:
+
+```{r}
+env_cost <- mec_gallon*Q_star
+returnValue(env_cost)
+```
+
+The environmental cost is equal to $318,935.30.
+
+
+## 3. Consumer benefit between high and low income consumers
+
+Just looking at the graph in part 2, we can see that the lower income group holds a smaller share of consumer benefit than the higher income group.
+
+```{r}
+CS_p(3, high_demand_model)
+CS_p(3, low_demand_model)
+```
+
+These computed values show us that the lower income group has approximately $ `r CS_p(3, high_demand_model) - CS_p(3, low_demand_model)` less consumer surplus than the higher income group.
+
+
+## 4. Gas Tax
+
+Since our MEC is equal to $`r mec_gallons`, this would be our optimal gas tax. This is the amount of tax that should be added to every gallon to make our Supply curve equal to our Marginal Social Cost (MSC) curve. 
 
